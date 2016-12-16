@@ -5,10 +5,21 @@ import org.apache.commons.lang3.StringUtils;
 import java.util.*;
 
 public class BDictionary implements BObject {
+    private final List<BObject> keys;
+    private final List<BObject> values;
     private final Map<BObject, BObject> value;
 
-    public BDictionary(Map<BObject, BObject> value) {
-        this.value = Collections.unmodifiableMap(value);
+    public BDictionary(List<BObject> keys, List<BObject> values) {
+        this.keys = Collections.unmodifiableList(keys);
+        this.values = Collections.unmodifiableList(values);
+        if (keys.size() != values.size()) {
+            throw new IllegalArgumentException("There should be as many keys as values");
+        }
+        Map<BObject, BObject> tempMap = new HashMap<>();
+        for (int i = 0; i < keys.size(); i++) {
+            tempMap.put(keys.get(i), values.get(i));
+        }
+        this.value = Collections.unmodifiableMap(tempMap);
     }
 
     public Map<BObject, BObject> getValue() {
@@ -47,9 +58,9 @@ public class BDictionary implements BObject {
     @Override
     public String toString() {
         List<BObject> list = new ArrayList<>();
-        for (Map.Entry<BObject, BObject> entry: value.entrySet()) {
-            list.add(entry.getKey());
-            list.add(entry.getValue());
+        for (int i = 0; i < keys.size(); i++) {
+            list.add(keys.get(i));
+            list.add(values.get(i));
         }
         return "d" + StringUtils.join(list, "") + "e";
     }

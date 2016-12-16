@@ -31,14 +31,16 @@ public class BencodeParser {
         switch (c) {
             case 'd':
                 assertThat(asciiInputStream.read() == 'd');
-                Map<BObject, BObject> map = new HashMap<>();
+                List<BObject> keys = new ArrayList<>();
+                List<BObject> values = new ArrayList<>();
                 while (asciiInputStream.peek() != 'e') {
                     BObject key = parse(asciiInputStream);
                     BObject value = parse(asciiInputStream);
-                    map.put(key, value);
+                    keys.add(key);
+                    values.add(value);
                 }
                 assertThat(asciiInputStream.read() == 'e');
-                return new BDictionary(map);
+                return new BDictionary(keys, values);
             case 'l':
                 assertThat(asciiInputStream.read() == 'l');
                 List<BObject> list = new ArrayList<>();
@@ -55,7 +57,7 @@ public class BencodeParser {
             default:
                 long length = asciiInputStream.readLong();
                 assertThat(asciiInputStream.read() == ':');
-                return new BString(asciiInputStream.readString(length));
+                return new BString(asciiInputStream.readString((int) length));
         }
     }
 }
