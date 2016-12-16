@@ -61,6 +61,7 @@ public class MetainfoParser {
         int current = 0;
         while (current < string.length()) {
             answer.add(string.substring(current, current + 20));
+            current += 20;
         }
         return answer;
     }
