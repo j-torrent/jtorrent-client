@@ -1,5 +1,7 @@
 package org.jtorrent.client.bencode;
 
+import org.jtorrent.client.util.SHA1Digester;
+
 import java.util.Objects;
 
 public class BLong implements BObject {
@@ -28,6 +30,6 @@ public class BLong implements BObject {
 
     @Override
     public String toString() {
-        return "BLong(" + value + ')';
+        return "i" + value + "e";
     }
 }

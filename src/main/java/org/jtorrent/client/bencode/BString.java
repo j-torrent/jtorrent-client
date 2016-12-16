@@ -1,9 +1,13 @@
 package org.jtorrent.client.bencode;
 
+import org.jtorrent.client.util.SHA1Digester;
+
+import java.security.MessageDigest;
 import java.util.Objects;
 
 public class BString implements BObject {
     private final String value;
+
 
     public BString(String value) {
         this.value = value;
@@ -28,6 +32,6 @@ public class BString implements BObject {
 
     @Override
     public String toString() {
-        return "BString(\"" + value + "\")";
+        return value.length() + ":" + value;
     }
 }

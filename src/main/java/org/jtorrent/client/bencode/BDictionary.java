@@ -1,8 +1,8 @@
 package org.jtorrent.client.bencode;
 
-import java.util.Collections;
-import java.util.Map;
-import java.util.Objects;
+import org.apache.commons.lang3.StringUtils;
+
+import java.util.*;
 
 public class BDictionary implements BObject {
     private final Map<BObject, BObject> value;
@@ -38,6 +38,11 @@ public class BDictionary implements BObject {
 
     @Override
     public String toString() {
-        return "BDictionary(" + value + ')';
+        List<BObject> list = new ArrayList<>();
+        for (Map.Entry<BObject, BObject> entry: value.entrySet()) {
+            list.add(entry.getKey());
+            list.add(entry.getValue());
+        }
+        return "d" + StringUtils.join(list, "") + "e";
     }
 }
