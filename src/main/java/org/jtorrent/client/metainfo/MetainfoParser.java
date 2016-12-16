@@ -3,6 +3,7 @@ package org.jtorrent.client.metainfo;
 import org.jtorrent.client.bencode.*;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -35,8 +36,7 @@ public class MetainfoParser {
         BDictionary infoDict = BDictionary.castOrFailure(metainfoDict.getOrFailure(INFO));
         byte[] infoSHA1 = infoDict.calculateSHA1();
         long pieceLength = BLong.castOrFailure(infoDict.getOrFailure(PIECE_LENGTH)).getValue();
-        List<String> pieces = BList.castOrFailure(infoDict.getOrFailure(PIECES)).getValue()
-                .stream().map(bString -> BString.castOrFailure(bString).getValue()).collect(Collectors.toList());
+        List<String> pieces = splitBy20(BString.castOrFailure(infoDict.getOrFailure(PIECES)).getValue());
         List<TorrentFileInfo> fileInfos;
         String name = BString.castOrFailure(infoDict.getOrFailure(NAME)).getValue();
         if (infoDict.getValue().containsKey(LENGTH)) {
@@ -54,5 +54,14 @@ public class MetainfoParser {
             )).collect(Collectors.toList());
         }
         return new Metainfo(announce, infoSHA1, pieceLength, pieces, fileInfos);
+    }
+
+    private static List<String> splitBy20(String string) {
+        List<String> answer = new ArrayList<>();
+        int current = 0;
+        while (current < string.length()) {
+            answer.add(string.substring(current, current + 20));
+        }
+        return answer;
     }
 }
