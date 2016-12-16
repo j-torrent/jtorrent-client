@@ -18,8 +18,7 @@ public class SHA1Digester {
     }
 
     public byte[] digest(String string) {
-        // TODO: ASCII? sure?
-        return sha1Md.digest(string.getBytes(StandardCharsets.US_ASCII));
+        return sha1Md.digest(string.getBytes(StandardCharsets.ISO_8859_1));
     }
 
     public static SHA1Digester getInstance() {

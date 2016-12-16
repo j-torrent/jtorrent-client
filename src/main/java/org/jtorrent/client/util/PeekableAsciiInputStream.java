@@ -3,6 +3,8 @@ package org.jtorrent.client.util;
 import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -53,16 +55,16 @@ public class PeekableAsciiInputStream extends InputStream {
         return result;
     }
 
-    public String readString(long length) throws IOException {
-        StringBuilder sb = new StringBuilder();
+    public String readString(int length) throws IOException {
+        ByteBuffer byteBuffer = ByteBuffer.allocate(length);
         for (long i = 0; i < length; i++) {
             int readed = read();
             if (readed == -1) {
                 throw new EOFException("Unexpected end of file");
             } else {
-                sb.append((char) readed);
+                byteBuffer.put((byte) readed);
             }
         }
-        return sb.toString();
+        return new String(byteBuffer.array(), StandardCharsets.ISO_8859_1);
     }
 }
