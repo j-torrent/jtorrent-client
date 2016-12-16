@@ -1,17 +1,15 @@
 package org.jtorrent.client.bencode;
 
-import java.util.Collections;
-import java.util.List;
 import java.util.Objects;
 
-public class BList implements BObject {
-    private final List<BObject> value;
+public class BLong implements BObject {
+    private final Long value;
 
-    public BList(List<BObject> value) {
-        this.value = Collections.unmodifiableList(value);
+    public BLong(Long value) {
+        this.value = value;
     }
 
-    public List<BObject> getValue() {
+    public Long getValue() {
         return value;
     }
 
@@ -19,8 +17,8 @@ public class BList implements BObject {
     public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
-        BList bList = (BList) o;
-        return Objects.equals(value, bList.value);
+        BLong bLong = (BLong) o;
+        return Objects.equals(value, bLong.value);
     }
 
     @Override
@@ -30,6 +28,6 @@ public class BList implements BObject {
 
     @Override
     public String toString() {
-        return "BList(" + value + ')';
+        return "BLong(" + value + ')';
     }
 }

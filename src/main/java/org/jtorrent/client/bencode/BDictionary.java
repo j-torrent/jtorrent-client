@@ -2,6 +2,7 @@ package org.jtorrent.client.bencode;
 
 import java.util.Collections;
 import java.util.Map;
+import java.util.Objects;
 
 public class BDictionary implements BObject {
     private final Map<BObject, BObject> value;
@@ -12,5 +13,23 @@ public class BDictionary implements BObject {
 
     public Map<BObject, BObject> getValue() {
         return value;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        BDictionary that = (BDictionary) o;
+        return Objects.equals(value, that.value);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(value);
+    }
+
+    @Override
+    public String toString() {
+        return "BDictionary(" + value + ')';
     }
 }
