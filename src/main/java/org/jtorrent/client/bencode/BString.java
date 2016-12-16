@@ -17,6 +17,14 @@ public class BString implements BObject {
         return value;
     }
 
+    public static BString castOrFailure(BObject object) {
+        if (object instanceof BString) {
+            return (BString) object;
+        } else {
+            throw new IllegalArgumentException("Cannot cast to BString");
+        }
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;

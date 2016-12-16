@@ -15,6 +15,14 @@ public class BLong implements BObject {
         return value;
     }
 
+    public static BLong castOrFailure(BObject object) {
+        if (object instanceof BLong) {
+            return (BLong) object;
+        } else {
+            throw new IllegalArgumentException("Cannot cast to BLong");
+        }
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;

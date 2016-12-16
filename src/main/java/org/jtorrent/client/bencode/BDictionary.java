@@ -23,6 +23,14 @@ public class BDictionary implements BObject {
         }
     }
 
+    public static BDictionary castOrFailure(BObject object) {
+        if (object instanceof BDictionary) {
+            return (BDictionary) object;
+        } else {
+            throw new IllegalArgumentException("Cannot cast to BDictionary");
+        }
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;

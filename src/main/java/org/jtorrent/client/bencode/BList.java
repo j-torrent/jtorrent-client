@@ -18,6 +18,14 @@ public class BList implements BObject {
         return value;
     }
 
+    public static BList castOrFailure(BObject object) {
+        if (object instanceof BList) {
+            return (BList) object;
+        } else {
+            throw new IllegalArgumentException("Cannot cast to BList");
+        }
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
