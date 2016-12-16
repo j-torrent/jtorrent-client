@@ -9,12 +9,14 @@ import java.util.List;
 
 public class Metainfo {
     private final String announce;
+    private final byte[] infoSHA1;
     private final long pieceLength;
     private final List<String> pieces;
     private final List<TorrentFileInfo> files;
 
-    public Metainfo(String announce, long pieceLength, List<String> pieces, List<TorrentFileInfo> files) {
+    public Metainfo(String announce, byte[] infoSHA1, long pieceLength, List<String> pieces, List<TorrentFileInfo> files) {
         this.announce = announce;
+        this.infoSHA1 = infoSHA1;
         this.pieceLength = pieceLength;
         this.pieces = Collections.unmodifiableList(pieces);
         this.files = Collections.unmodifiableList(files);
@@ -34,5 +36,9 @@ public class Metainfo {
 
     public List<TorrentFileInfo> getFiles() {
         return files;
+    }
+
+    public byte[] getInfoSHA1() {
+        return infoSHA1;
     }
 }

@@ -33,6 +33,7 @@ public class MetainfoParser {
         BDictionary metainfoDict = BDictionary.castOrFailure(bObject);
         String announce = BString.castOrFailure(metainfoDict.getOrFailure(ANNOUNCE)).getValue();
         BDictionary infoDict = BDictionary.castOrFailure(metainfoDict.getOrFailure(INFO));
+        byte[] infoSHA1 = infoDict.calculateSHA1();
         long pieceLength = BLong.castOrFailure(infoDict.getOrFailure(PIECE_LENGTH)).getValue();
         List<String> pieces = BList.castOrFailure(infoDict.getOrFailure(PIECES)).getValue()
                 .stream().map(bString -> BString.castOrFailure(bString).getValue()).collect(Collectors.toList());
@@ -52,6 +53,6 @@ public class MetainfoParser {
                                             .collect(Collectors.toList()))
             )).collect(Collectors.toList());
         }
-        return new Metainfo(announce, pieceLength, pieces, fileInfos);
+        return new Metainfo(announce, infoSHA1, pieceLength, pieces, fileInfos);
     }
 }
