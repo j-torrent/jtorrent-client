@@ -15,6 +15,14 @@ public class BDictionary implements BObject {
         return value;
     }
 
+    public BObject getOrFailure(BObject key) {
+        if (value.containsKey(key)) {
+            return value.get(key);
+        } else {
+            throw new IllegalArgumentException(String.format("Cannot find %s in dictionary", key));
+        }
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
