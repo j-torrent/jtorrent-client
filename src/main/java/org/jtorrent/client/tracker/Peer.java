@@ -1,7 +1,6 @@
 package org.jtorrent.client.tracker;
 
-import com.sun.istack.internal.NotNull;
-import com.sun.istack.internal.Nullable;
+import javax.annotation.Nonnull;
 import org.jtorrent.client.metainfo.PeerId;
 
 import java.net.InetSocketAddress;
@@ -9,22 +8,22 @@ import java.util.Objects;
 import java.util.Optional;
 
 public class Peer {
-    @NotNull
+    @Nonnull
     private final Optional<PeerId> id;
-    @NotNull
+    @Nonnull
     private final InetSocketAddress address;
 
-    public Peer(@NotNull Optional<PeerId> id, @NotNull InetSocketAddress address) {
+    public Peer(@Nonnull Optional<PeerId> id, @Nonnull InetSocketAddress address) {
         this.id = id;
         this.address = address;
     }
 
-    @NotNull
+    @Nonnull
     public Optional<PeerId> getId() {
         return id;
     }
 
-    @NotNull
+    @Nonnull
     public InetSocketAddress getAddress() {
         return address;
     }
