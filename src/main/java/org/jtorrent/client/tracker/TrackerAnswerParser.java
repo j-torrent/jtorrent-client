@@ -32,7 +32,7 @@ public class TrackerAnswerParser {
         List<Peer> peers = new ArrayList<>();
         for (byte[] bytes : ipWithPorts) {
             byte[] ipBytes = Arrays.copyOfRange(bytes, 0, 4);
-            int port = Byte.toUnsignedInt(bytes[4]) * 255 + Byte.toUnsignedInt(bytes[5]);
+            int port = Byte.toUnsignedInt(bytes[4]) * 256 + Byte.toUnsignedInt(bytes[5]);
             try {
                 InetSocketAddress address = new InetSocketAddress(InetAddress.getByAddress(ipBytes), port);
                 peers.add(new Peer(Optional.empty(), address));
