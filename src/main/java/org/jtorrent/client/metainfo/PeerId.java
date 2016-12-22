@@ -2,6 +2,8 @@ package org.jtorrent.client.metainfo;
 
 import org.apache.commons.lang3.RandomStringUtils;
 
+import java.util.Objects;
+
 public class PeerId {
     public static final int PEER_ID_LENGTH = 20;
     public static final String JTORRENT_PREFIX = "-JB-0001-";
@@ -21,5 +23,18 @@ public class PeerId {
 
     public String getId() {
         return id;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        PeerId peerId = (PeerId) o;
+        return Objects.equals(id, peerId.id);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(id);
     }
 }

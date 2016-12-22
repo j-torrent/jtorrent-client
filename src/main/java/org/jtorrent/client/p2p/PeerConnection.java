@@ -35,6 +35,9 @@ public class PeerConnection implements AutoCloseable {
     private volatile boolean interested = false;
     private volatile boolean peerChoked = true;
     private volatile boolean peerInterested = false;
+    private volatile boolean isBad = false;
+    private Consumer<Void> unchokeConsumer = v -> {
+    };
     private Consumer<Integer> haveConsumer = index -> {
     };
     private Consumer<BitSet> bitfieldConsumer = bitSet -> {
@@ -59,7 +62,7 @@ public class PeerConnection implements AutoCloseable {
         }
         LOG.info("Connecting to " + peer.getAddress());
         peerSocketChannel = SocketChannel.open();
-        peerSocketChannel.connect(peer.getAddress());
+        peerSocketChannel.socket().connect(peer.getAddress(), 1000);
 
         incomingThread = new Thread(() -> {
             LOG.info("Incoming thread start!");
@@ -98,6 +101,7 @@ public class PeerConnection implements AutoCloseable {
                             break;
                         case 1:
                             peerChoked = false;
+                            unchokeConsumer.accept(null);
                             break;
                         case 2:
                             peerInterested = true;
@@ -111,9 +115,12 @@ public class PeerConnection implements AutoCloseable {
                             haveConsumer.accept(pieceIndex);
                             break;
                         }
-                        case 5:
-                            // TODO: implement
+                        case 5: {
+                            ByteBuffer byteBuffer = ByteBuffer.wrap(Arrays.copyOfRange(message, 1, message.length));
+                            bitfieldConsumer.accept(BitSet.valueOf(byteBuffer));
+                            LOG.info("" + byteBuffer.capacity());
                             break;
+                        }
                         case 6: {
                             ByteBuffer byteBuffer = ByteBuffer.wrap(Arrays.copyOfRange(message, 1, message.length));
                             int pieceIndex = byteBuffer.getInt();
@@ -136,8 +143,12 @@ public class PeerConnection implements AutoCloseable {
                     }
                 }
             } catch (Exception e) {
+                isBad = true;
+                LOG.error("Mda kek", e);
             }
         });
+
+        incomingThread.setName("incoming-thread-" + peer.getAddress().getHostName());
 
         outgoingThread = new Thread(() -> {
             LOG.info("Outgoing thread start!");
@@ -148,28 +159,46 @@ public class PeerConnection implements AutoCloseable {
                 } catch (InterruptedException e) {
                     break;
                 }
-                LOG.info("Sending: " + outgoingMessage);
                 try {
                     while (outgoingMessage.hasRemaining()) {
                         int w = peerSocketChannel.write(outgoingMessage);
-                        LOG.info("Only " + outgoingMessage + " Mda " + w);
-                        if (w == 0) {
-                            Thread.sleep(100);
-                        }
                     }
                 } catch (IOException e) {
+                    isBad = true;
                     LOG.error("No internet to write outgoing message", e);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
                 }
             }
         });
+        outgoingThread.setName("outcoming-thread-" + peer.getAddress().getHostName());
 
         incomingThread.start();
         outgoingThread.start();
     }
 
-    private void send(byte messageId, ByteBuffer payloadBuffer) {
+    public void setHaveConsumer(Consumer<Integer> haveConsumer) {
+        this.haveConsumer = haveConsumer;
+    }
+
+    public void setBitfieldConsumer(Consumer<BitSet> bitfieldConsumer) {
+        this.bitfieldConsumer = bitfieldConsumer;
+    }
+
+    public void setRequestMessageConsumer(Consumer<RequestMessage> requestMessageConsumer) {
+        this.requestMessageConsumer = requestMessageConsumer;
+    }
+
+    public void setPieceMessageConsumer(Consumer<PieceMessage> pieceMessageConsumer) {
+        this.pieceMessageConsumer = pieceMessageConsumer;
+    }
+
+    public void setUnchokeConsumer(Consumer<Void> unchokeConsumer) {
+        this.unchokeConsumer = unchokeConsumer;
+    }
+
+    private void send(byte messageId, ByteBuffer payloadBuffer) throws IOException {
+        if (isBad) {
+            throw new IOException("och ploho");
+        }
         byte[] payload = new byte[payloadBuffer.remaining()];
         payloadBuffer.get(payload);
         ByteBuffer byteBuffer = ByteBuffer.allocate(4 + 1 + payload.length);
@@ -180,36 +209,38 @@ public class PeerConnection implements AutoCloseable {
         outgoingMessages.offer(ByteBuffer.wrap(byteBuffer.array()));
     }
 
-    public void sendChoke() {
+    public void sendChoke() throws IOException {
         choked = false;
         send((byte) 0, ByteBuffer.allocate(0));
     }
 
-    public void sendUnchoke() {
-        choked = true;
+    public void sendUnchoke() throws IOException {
+    choked = true;
         send((byte) 1, ByteBuffer.allocate(0));
     }
 
-    public void sendInterested() {
+    public void sendInterested() throws IOException {
         interested = true;
         send((byte) 2, ByteBuffer.allocate(0));
     }
 
-    public void sendNotInterested() {
+    public void sendNotInterested() throws IOException {
         interested = false;
         send((byte) 3, ByteBuffer.allocate(0));
     }
 
-    public void sendHave(int pieceIndex) {
+    public void sendHave(int pieceIndex) throws IOException {
         send((byte) 4, buildByteBuffer(pieceIndex));
     }
 
-    public void sendBitfield(BitSet bitSet) {
-        // TODO: implement
-        throw new UnsupportedOperationException();
+    public void sendBitfield(BitSet bitSet) throws IOException {
+        ByteBuffer byteBuffer = ByteBuffer.allocate(bitSet.size() / 8);
+        byteBuffer.put(bitSet.toByteArray());
+        LOG.info("KUDAH " + byteBuffer.capacity());
+//        send((byte) 5, byteBuffer);
     }
 
-    public void sendRequest(int index, int begin, int length) {
+    public void sendRequest(int index, int begin, int length) throws IOException {
         send((byte) 6, buildByteBuffer(index, begin, length));
     }
 
@@ -219,11 +250,11 @@ public class PeerConnection implements AutoCloseable {
 //        send((byte) 7, buildByteBuffer(index, begin, block));
     }
 
-    public void sendCancel(int index, int begin, int length) {
+    public void sendCancel(int index, int begin, int length) throws IOException {
         send((byte) 8, buildByteBuffer(index, begin, length));
     }
 
-    public void sendPort(int port) {
+    public void sendPort(int port) throws IOException {
         ByteBuffer byteBuffer = ByteBuffer.allocate(2);
         byteBuffer.putShort((short) port);
         send((byte) 9, buildByteBuffer(port));
@@ -245,6 +276,7 @@ public class PeerConnection implements AutoCloseable {
 
     @Override
     public void close() throws IOException, InterruptedException {
+        LOG.info("Closing");
         incomingThread.interrupt();
         outgoingThread.interrupt();
         outgoingThread.join();
