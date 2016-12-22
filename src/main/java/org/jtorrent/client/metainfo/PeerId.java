@@ -4,6 +4,7 @@ import org.apache.commons.lang3.RandomStringUtils;
 
 public class PeerId {
     public static final int PEER_ID_LENGTH = 20;
+    public static final String JTORRENT_PREFIX = "-JB-0001-";
 
     private final String id;
 
@@ -14,8 +15,8 @@ public class PeerId {
         this.id = id;
     }
 
-    public static PeerId generateRandom() {
-        return new PeerId(RandomStringUtils.randomAlphanumeric(PEER_ID_LENGTH));
+    public static PeerId generateJTorrentRandom() {
+        return new PeerId(JTORRENT_PREFIX + RandomStringUtils.randomAlphanumeric(PEER_ID_LENGTH - JTORRENT_PREFIX.length()));
     }
 
     public String getId() {
