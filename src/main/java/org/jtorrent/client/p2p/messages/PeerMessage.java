@@ -6,7 +6,7 @@ import java.nio.ByteBuffer;
  * @author Daniyar Itegulov
  */
 public class PeerMessage {
-    public static final int MESSAGE_LENGTH_SIZE = 1;
+    public static final int MESSAGE_LENGTH_SIZE = 4;
 
     private final Type type;
     private final ByteBuffer data;
