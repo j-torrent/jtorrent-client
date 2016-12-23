@@ -17,8 +17,8 @@ public class SHA1Digester {
         }
     }
 
-    public byte[] digest(String string) {
-        return sha1Md.digest(string.getBytes(StandardCharsets.ISO_8859_1));
+    public byte[] digest(byte[] bytes) {
+        return sha1Md.digest(bytes);
     }
 
     public static SHA1Digester getInstance() {

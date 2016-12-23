@@ -22,19 +22,23 @@ import java.util.function.Consumer;
 public class PeerConnection implements AutoCloseable {
     private final static Logger LOG = LoggerFactory.getLogger(PeerConnection.class);
 
+    private static final int EXTRA_BYTES_SIZE = 8;
+    private static final int INFO_HASH_SIZE = 20;
+    private static final int PEER_ID_SIZE = 20;
+    private static final String BIT_TORRENT_PROTOCOL = "BitTorrent protocol";
+
     private final Thread incomingThread;
     private final Thread outgoingThread;
 
     private final SocketChannel peerSocketChannel;
-
     private final BlockingQueue<ByteBuffer> outgoingMessages;
-    private Consumer<ByteBuffer> headerConsumer = byteBuffer -> {
-        LOG.info("I've got " + new String(byteBuffer.array(), StandardCharsets.ISO_8859_1));
-    };
+
     private volatile boolean choked = true;
     private volatile boolean interested = false;
     private volatile boolean peerChoked = true;
     private volatile boolean peerInterested = false;
+    private Consumer<ByteBuffer> headerConsumer = byteBuffer -> {
+    };
     private Consumer<Void> unchokeConsumer = v -> {
     };
     private Consumer<Integer> haveConsumer = index -> {
@@ -44,127 +48,61 @@ public class PeerConnection implements AutoCloseable {
     private Consumer<RequestMessage> requestMessageConsumer = requestMessage -> {
     };
     private Consumer<PieceMessage> pieceMessageConsumer = pieceMessage -> {
-        LOG.info("I've got a piece: " + Arrays.toString(pieceMessage.getBlock()));
     };
-    private Consumer<IOException> exceptionConsumer = e -> {};
+    private Consumer<IOException> exceptionConsumer = e -> {
+    };
 
-    public PeerConnection(Peer peer, Metainfo metainfo, PeerId myPeerId) throws IOException {
+    public PeerConnection(Peer peer, Metainfo metainfo, PeerId myPeerId, int connectionTimeout) throws IOException {
         outgoingMessages = new LinkedBlockingDeque<>();
         {
-            byte[] bytes = new byte[1 + 19 + 8 + 20 + 20];
-            bytes[0] = 19;
-            System.arraycopy("BitTorrent protocol".getBytes(StandardCharsets.ISO_8859_1), 0, bytes, 1, "BitTorrent protocol".length());
-            System.arraycopy(metainfo.getInfoSHA1(), 0, bytes, 28, 20);
-            System.arraycopy(myPeerId.getId().getBytes(StandardCharsets.ISO_8859_1), 0, bytes, 48, 20);
+            byte[] bytes = new byte[1 + BIT_TORRENT_PROTOCOL.length() +
+                    EXTRA_BYTES_SIZE + INFO_HASH_SIZE + PEER_ID_SIZE];
+            bytes[0] = (byte) BIT_TORRENT_PROTOCOL.length();
+            byte[] bitTorrentBytes = BIT_TORRENT_PROTOCOL.getBytes(StandardCharsets.ISO_8859_1);
+            System.arraycopy(bitTorrentBytes, 0, bytes, 1, bitTorrentBytes.length);
+            // Extra bytes writing is omitted because they are zeros in general
+            System.arraycopy(
+                    metainfo.getInfoSHA1(),
+                    0,
+                    bytes,
+                    1 + BIT_TORRENT_PROTOCOL.length() + EXTRA_BYTES_SIZE,
+                    INFO_HASH_SIZE
+            );
+            byte[] peerIdBytes = myPeerId.getId().getBytes(StandardCharsets.ISO_8859_1);
+            System.arraycopy(
+                    peerIdBytes,
+                    0,
+                    bytes,
+                    1 + BIT_TORRENT_PROTOCOL.length() + EXTRA_BYTES_SIZE + INFO_HASH_SIZE,
+                    PEER_ID_SIZE
+            );
             ByteBuffer byteBuffer = ByteBuffer.wrap(bytes);
-            LOG.info("Handshaking: " + new String(byteBuffer.array(), StandardCharsets.ISO_8859_1));
-            outgoingMessages.offer(byteBuffer);
+            LOG.debug("Handshaking: " + new String(byteBuffer.array(), StandardCharsets.ISO_8859_1));
+            try {
+                outgoingMessages.put(byteBuffer);
+            } catch (InterruptedException ignored) {
+                // This can't happen in general course of work
+            }
         }
-        LOG.info("Connecting to " + peer.getAddress());
+        LOG.debug("Connecting to " + peer.getAddress());
         peerSocketChannel = SocketChannel.open();
-        peerSocketChannel.socket().connect(peer.getAddress(), 5000);
+        peerSocketChannel.socket().connect(peer.getAddress(), connectionTimeout);
 
-        incomingThread = new Thread(() -> {
-            LOG.info("Incoming thread start!");
-            try {
-                ByteBuffer byteBuffer = ByteBuffer.allocate(1);
-                while (peerSocketChannel.read(byteBuffer) != 1) ;
-                byteBuffer = ByteBuffer.allocate(byteBuffer.get(0) + 8 + 20 + 20);
-                int read = 0;
-                while (read < byteBuffer.capacity()) {
-                    read += peerSocketChannel.read(byteBuffer);
-                }
-                headerConsumer.accept(byteBuffer);
-            } catch (IOException e) {
-                exceptionConsumer.accept(e);
-            }
-            ByteBuffer buffer = ByteBuffer.allocate(100000);
-            try {
-                while (true) {
-                    ByteBuffer lengthBuffer = ByteBuffer.allocate(4);
-                    lengthBuffer.order(ByteOrder.BIG_ENDIAN);
-                    int read = 0;
-                    while (read < lengthBuffer.capacity()) {
-                        read += peerSocketChannel.read(lengthBuffer);
-                    }
-                    lengthBuffer.flip();
-                    int size = lengthBuffer.getInt();
-                    if (size == 0) {
-                        continue;
-                    }
-                    ByteBuffer payloadBuffer = ByteBuffer.allocate(size);
-                    read = 0;
-                    while (read < payloadBuffer.capacity()) {
-                        read += peerSocketChannel.read(payloadBuffer);
-                    }
-                    byte[] message = payloadBuffer.array();
-                    switch (message[0]) {
-                        case 0:
-                            peerChoked = true;
-                            break;
-                        case 1:
-                            peerChoked = false;
-                            unchokeConsumer.accept(null);
-                            break;
-                        case 2:
-                            peerInterested = true;
-                            break;
-                        case 3:
-                            peerInterested = false;
-                            break;
-                        case 4: {
-                            ByteBuffer byteBuffer = ByteBuffer.wrap(Arrays.copyOfRange(message, 1, message.length));
-                            int pieceIndex = byteBuffer.getInt();
-                            haveConsumer.accept(pieceIndex);
-                            break;
-                        }
-                        case 5: {
-                            BitSet bitSet = new BitSet(metainfo.getPieces().size());
-                            for (int i = 1; i < message.length; i++) {
-                                for (int j = 0; j < 8; j++) {
-                                    if (((message[i] >> j) & 1) == 1) {
-                                        bitSet.set((i - 1) * 8 + (7 - j));
-                                    }
-                                }
-                            }
-//                            ByteBuffer byteBuffer = ByteBuffer.wrap(Arrays.copyOfRange(message, 1, message.length));
-//                            byteBuffer.order(ByteOrder.LITTLE_ENDIAN);
-//                            BitSet bitSet = BitSet.valueOf(byteBuffer);
-                            bitfieldConsumer.accept(bitSet);
-//                            LOG.info("" + byteBuffer.capacity());
-                            break;
-                        }
-                        case 6: {
-                            ByteBuffer byteBuffer = ByteBuffer.wrap(Arrays.copyOfRange(message, 1, message.length));
-                            int pieceIndex = byteBuffer.getInt();
-                            int begin = byteBuffer.getInt();
-                            int length = byteBuffer.getInt();
-                            requestMessageConsumer.accept(new RequestMessage(pieceIndex, begin, length));
-                            break;
-                        }
-                        case 7: {
-                            ByteBuffer byteBuffer = ByteBuffer.wrap(Arrays.copyOfRange(message, 1, message.length));
-                            int pieceIndex = byteBuffer.getInt();
-                            int begin = byteBuffer.getInt();
-                            byte[] block = new byte[byteBuffer.remaining()];
-                            byteBuffer.get(block);
-                            pieceMessageConsumer.accept(new PieceMessage(pieceIndex, begin, block));
-                            break;
-                        }
-                        default:
-                            LOG.warn("Unknown message id: " + message[0]);
-                    }
-                }
-            } catch (IOException e) {
-                exceptionConsumer.accept(e);
-            }
-        });
-
+        incomingThread = new Thread(new IncomingRunnable(metainfo));
         incomingThread.setName("incoming-thread-" + peer.getAddress().getHostName());
 
-        outgoingThread = new Thread(() -> {
+        outgoingThread = new Thread(new OutgoingRunnable());
+        outgoingThread.setName("outgoing-thread-" + peer.getAddress().getHostName());
+
+        incomingThread.start();
+        outgoingThread.start();
+    }
+
+    private class OutgoingRunnable implements Runnable {
+        @Override
+        public void run() {
             LOG.info("Outgoing thread start!");
-            while (true) {
+            while (!Thread.interrupted()) {
                 ByteBuffer outgoingMessage;
                 try {
                     outgoingMessage = outgoingMessages.take();
@@ -173,17 +111,124 @@ public class PeerConnection implements AutoCloseable {
                 }
                 try {
                     while (outgoingMessage.hasRemaining()) {
-                        int w = peerSocketChannel.write(outgoingMessage);
+                        peerSocketChannel.write(outgoingMessage);
                     }
                 } catch (IOException e) {
                     exceptionConsumer.accept(e);
                 }
             }
-        });
-        outgoingThread.setName("outcoming-thread-" + peer.getAddress().getHostName());
+        }
+    }
 
-        incomingThread.start();
-        outgoingThread.start();
+    private class IncomingRunnable implements Runnable {
+        private final Metainfo metainfo;
+
+        private IncomingRunnable(Metainfo metainfo) {
+            this.metainfo = metainfo;
+        }
+
+        private void processMessage(byte[] message) {
+            switch (message[0]) {
+                case 0:
+                    peerChoked = true;
+                    break;
+                case 1:
+                    peerChoked = false;
+                    unchokeConsumer.accept(null);
+                    break;
+                case 2:
+                    peerInterested = true;
+                    break;
+                case 3:
+                    peerInterested = false;
+                    break;
+                case 4: {
+                    ByteBuffer byteBuffer = ByteBuffer.wrap(Arrays.copyOfRange(message, 1, message.length));
+                    int pieceIndex = byteBuffer.getInt();
+                    haveConsumer.accept(pieceIndex);
+                    break;
+                }
+                case 5: {
+                    BitSet bitSet = new BitSet(metainfo.getPieces().size());
+                    for (int i = 1; i < message.length; i++) {
+                        for (int j = 0; j < 8; j++) {
+                            if (((message[i] >> j) & 1) == 1) {
+                                bitSet.set((i - 1) * 8 + (7 - j));
+                            }
+                        }
+                    }
+                    bitfieldConsumer.accept(bitSet);
+                    break;
+                }
+                case 6: {
+                    ByteBuffer byteBuffer = ByteBuffer.wrap(Arrays.copyOfRange(message, 1, message.length));
+                    int pieceIndex = byteBuffer.getInt();
+                    int begin = byteBuffer.getInt();
+                    int length = byteBuffer.getInt();
+                    requestMessageConsumer.accept(new RequestMessage(pieceIndex, begin, length));
+                    break;
+                }
+                case 7: {
+                    ByteBuffer byteBuffer = ByteBuffer.wrap(Arrays.copyOfRange(message, 1, message.length));
+                    int pieceIndex = byteBuffer.getInt();
+                    int begin = byteBuffer.getInt();
+                    byte[] block = new byte[byteBuffer.remaining()];
+                    byteBuffer.get(block);
+                    pieceMessageConsumer.accept(new PieceMessage(pieceIndex, begin, block));
+                    break;
+                }
+                default:
+                    LOG.warn("Unknown message id: " + message[0]);
+            }
+        }
+
+        private ByteBuffer readAll(SocketChannel channel, int size) throws IOException {
+            ByteBuffer dst = ByteBuffer.allocate(size);
+            int read = 0;
+            while (read < dst.capacity()) {
+                read += channel.read(dst);
+            }
+            return dst;
+        }
+
+        private int readLength() throws IOException {
+            ByteBuffer lengthBuffer = readAll(peerSocketChannel, 4);
+            lengthBuffer.flip();
+            return lengthBuffer.getInt();
+        }
+
+        private byte[] readPayload(int size) throws IOException {
+            ByteBuffer payloadBuffer = readAll(peerSocketChannel, size);
+            return payloadBuffer.array();
+        }
+
+        private ByteBuffer readHeader() throws IOException {
+            ByteBuffer byteBuffer = ByteBuffer.allocate(1);
+            while (peerSocketChannel.read(byteBuffer) != 1) ;
+            return readAll(peerSocketChannel, byteBuffer.get(0) +
+                    EXTRA_BYTES_SIZE + INFO_HASH_SIZE + PEER_ID_SIZE);
+        }
+
+        @Override
+        public void run() {
+            LOG.info("Incoming thread started");
+            try {
+                // Reading header
+                ByteBuffer byteBuffer = readHeader();
+                headerConsumer.accept(byteBuffer);
+                // Continually read messages
+                while (!Thread.interrupted()) {
+                    int size = readLength();
+                    if (size == 0) {
+                        continue; // Just keep-alive message
+                    }
+                    byte[] message = readPayload(size);
+                    processMessage(message);
+                }
+            } catch (IOException e) {
+                exceptionConsumer.accept(e);
+            }
+        }
     }
 
     public void setHaveConsumer(Consumer<Integer> haveConsumer) {
@@ -227,7 +272,7 @@ public class PeerConnection implements AutoCloseable {
     }
 
     public void sendUnchoke() throws IOException {
-    choked = true;
+        choked = true;
         send((byte) 1, ByteBuffer.allocate(0));
     }
 

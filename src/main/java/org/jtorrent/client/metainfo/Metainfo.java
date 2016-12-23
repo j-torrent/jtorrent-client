@@ -51,4 +51,8 @@ public class Metainfo {
             return (int) pieceLength;
         }
     }
+
+    public long getFilesLength() {
+        return files.stream().mapToLong(TorrentFileInfo::getLengthInBytes).sum();
+    }
 }
