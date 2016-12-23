@@ -5,7 +5,6 @@ import org.jtorrent.client.metainfo.Metainfo;
 import org.jtorrent.client.metainfo.PeerId;
 import org.jtorrent.client.metainfo.TorrentFileInfo;
 import org.jtorrent.client.p2p.PeerConnection;
-import org.jtorrent.client.p2p.messages.BitfieldMessage;
 import org.jtorrent.client.p2p.messages.InterestedMessage;
 import org.jtorrent.client.p2p.messages.PieceMessage;
 import org.jtorrent.client.p2p.messages.RequestMessage;
@@ -16,7 +15,9 @@ import org.jtorrent.client.util.SHA1Digester;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.*;
+import java.io.File;
+import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.*;

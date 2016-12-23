@@ -9,11 +9,8 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
-import java.util.BitSet;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.function.Consumer;
@@ -25,7 +22,6 @@ public class PeerConnection implements AutoCloseable {
     private static final int INFO_HASH_SIZE = 20;
     private static final int PEER_ID_SIZE = 20;
     private static final String BIT_TORRENT_PROTOCOL = "BitTorrent protocol";
-    public static final int MAX_MESSAGE_LENGTH = 1 << 16;
 
     private final Thread incomingThread;
     private final Thread outgoingThread;
@@ -92,7 +88,7 @@ public class PeerConnection implements AutoCloseable {
         peerSocketChannel = SocketChannel.open();
         peerSocketChannel.socket().connect(peer.getAddress(), connectionTimeout);
 
-        incomingThread = new Thread(new IncomingRunnable(metainfo));
+        incomingThread = new Thread(new IncomingRunnable());
         incomingThread.setName("incoming-thread-" + peer.getAddress().getHostName());
 
         outgoingThread = new Thread(new OutgoingRunnable());
@@ -100,6 +96,54 @@ public class PeerConnection implements AutoCloseable {
 
         incomingThread.start();
         outgoingThread.start();
+    }
+
+    public void setHaveConsumer(Consumer<HaveMessage> haveConsumer) {
+        this.haveConsumer = haveConsumer;
+    }
+
+    public void setBitfieldConsumer(Consumer<BitfieldMessage> bitfieldConsumer) {
+        this.bitfieldConsumer = bitfieldConsumer;
+    }
+
+    public void setRequestMessageConsumer(Consumer<RequestMessage> requestMessageConsumer) {
+        this.requestMessageConsumer = requestMessageConsumer;
+    }
+
+    public void setPieceMessageConsumer(Consumer<PieceMessage> pieceMessageConsumer) {
+        this.pieceMessageConsumer = pieceMessageConsumer;
+    }
+
+    public void setUnchokeConsumer(Consumer<UnchokeMessage> unchokeConsumer) {
+        this.unchokeConsumer = unchokeConsumer;
+    }
+
+    public void setExceptionConsumer(Consumer<IOException> exceptionConsumer) {
+        this.exceptionConsumer = exceptionConsumer;
+    }
+
+    public void send(PeerMessage peerMessage) {
+        try {
+            outgoingMessages.put(peerMessage.getData());
+        } catch (InterruptedException ignored) {
+            // Ignore, our send queue will only block if it contains
+            // MAX_INTEGER messages, in which case we're already in big
+            // trouble, and we'd have to be interrupted, too.
+        }
+    }
+
+    public void setHeaderConsumer(Consumer<ByteBuffer> headerConsumer) {
+        this.headerConsumer = headerConsumer;
+    }
+
+    @Override
+    public void close() throws IOException, InterruptedException {
+        LOG.info("Closing");
+        incomingThread.interrupt();
+        outgoingThread.interrupt();
+        outgoingThread.join();
+        incomingThread.join();
+        peerSocketChannel.close();
     }
 
     private class OutgoingRunnable implements Runnable {
@@ -125,12 +169,6 @@ public class PeerConnection implements AutoCloseable {
     }
 
     private class IncomingRunnable implements Runnable {
-        private final Metainfo metainfo;
-
-        private IncomingRunnable(Metainfo metainfo) {
-            this.metainfo = metainfo;
-        }
-
         private void processMessage(PeerMessage message) {
             if (message instanceof KeepAliveMessage) {
                 keepAliveMessageConsumer.accept((KeepAliveMessage) message);
@@ -208,53 +246,5 @@ public class PeerConnection implements AutoCloseable {
                 exceptionConsumer.accept(e);
             }
         }
-    }
-
-    public void setHaveConsumer(Consumer<HaveMessage> haveConsumer) {
-        this.haveConsumer = haveConsumer;
-    }
-
-    public void setBitfieldConsumer(Consumer<BitfieldMessage> bitfieldConsumer) {
-        this.bitfieldConsumer = bitfieldConsumer;
-    }
-
-    public void setRequestMessageConsumer(Consumer<RequestMessage> requestMessageConsumer) {
-        this.requestMessageConsumer = requestMessageConsumer;
-    }
-
-    public void setPieceMessageConsumer(Consumer<PieceMessage> pieceMessageConsumer) {
-        this.pieceMessageConsumer = pieceMessageConsumer;
-    }
-
-    public void setUnchokeConsumer(Consumer<UnchokeMessage> unchokeConsumer) {
-        this.unchokeConsumer = unchokeConsumer;
-    }
-
-    public void setExceptionConsumer(Consumer<IOException> exceptionConsumer) {
-        this.exceptionConsumer = exceptionConsumer;
-    }
-
-    public void send(PeerMessage peerMessage) {
-        try {
-            outgoingMessages.put(peerMessage.getData());
-        } catch (InterruptedException ignored) {
-            // Ignore, our send queue will only block if it contains
-            // MAX_INTEGER messages, in which case we're already in big
-            // trouble, and we'd have to be interrupted, too.
-        }
-    }
-
-    public void setHeaderConsumer(Consumer<ByteBuffer> headerConsumer) {
-        this.headerConsumer = headerConsumer;
-    }
-
-    @Override
-    public void close() throws IOException, InterruptedException {
-        LOG.info("Closing");
-        incomingThread.interrupt();
-        outgoingThread.interrupt();
-        outgoingThread.join();
-        incomingThread.join();
-        peerSocketChannel.close();
     }
 }
