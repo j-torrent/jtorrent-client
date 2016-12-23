@@ -35,7 +35,6 @@ public class PeerConnection implements AutoCloseable {
     private volatile boolean interested = false;
     private volatile boolean peerChoked = true;
     private volatile boolean peerInterested = false;
-    private volatile boolean isBad = false;
     private Consumer<Void> unchokeConsumer = v -> {
     };
     private Consumer<Integer> haveConsumer = index -> {
@@ -47,6 +46,7 @@ public class PeerConnection implements AutoCloseable {
     private Consumer<PieceMessage> pieceMessageConsumer = pieceMessage -> {
         LOG.info("I've got a piece: " + Arrays.toString(pieceMessage.getBlock()));
     };
+    private Consumer<IOException> exceptionConsumer = e -> {};
 
     public PeerConnection(Peer peer, Metainfo metainfo, PeerId myPeerId) throws IOException {
         outgoingMessages = new LinkedBlockingDeque<>();
@@ -76,7 +76,7 @@ public class PeerConnection implements AutoCloseable {
                 }
                 headerConsumer.accept(byteBuffer);
             } catch (IOException e) {
-                LOG.error("Something strange happened", e);
+                exceptionConsumer.accept(e);
             }
             ByteBuffer buffer = ByteBuffer.allocate(100000);
             try {
@@ -89,6 +89,9 @@ public class PeerConnection implements AutoCloseable {
                     }
                     lengthBuffer.flip();
                     int size = lengthBuffer.getInt();
+                    if (size == 0) {
+                        continue;
+                    }
                     ByteBuffer payloadBuffer = ByteBuffer.allocate(size);
                     read = 0;
                     while (read < payloadBuffer.capacity()) {
@@ -142,9 +145,8 @@ public class PeerConnection implements AutoCloseable {
                             LOG.warn("Unknown message id: " + message[0]);
                     }
                 }
-            } catch (Exception e) {
-                isBad = true;
-                LOG.error("Mda kek", e);
+            } catch (IOException e) {
+                exceptionConsumer.accept(e);
             }
         });
 
@@ -164,8 +166,7 @@ public class PeerConnection implements AutoCloseable {
                         int w = peerSocketChannel.write(outgoingMessage);
                     }
                 } catch (IOException e) {
-                    isBad = true;
-                    LOG.error("No internet to write outgoing message", e);
+                    exceptionConsumer.accept(e);
                 }
             }
         });
@@ -195,10 +196,11 @@ public class PeerConnection implements AutoCloseable {
         this.unchokeConsumer = unchokeConsumer;
     }
 
+    public void setExceptionConsumer(Consumer<IOException> exceptionConsumer) {
+        this.exceptionConsumer = exceptionConsumer;
+    }
+
     private void send(byte messageId, ByteBuffer payloadBuffer) throws IOException {
-        if (isBad) {
-            throw new IOException("och ploho");
-        }
         byte[] payload = new byte[payloadBuffer.remaining()];
         payloadBuffer.get(payload);
         ByteBuffer byteBuffer = ByteBuffer.allocate(4 + 1 + payload.length);

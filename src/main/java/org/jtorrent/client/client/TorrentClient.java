@@ -103,30 +103,25 @@ public class TorrentClient implements AutoCloseable {
                     byte[] pieceIndBytes = pieceBytes.remove(pieceMessage.getIndex());
                     byte[] pieceRealSha1 = SHA1Digester.getInstance().digest(new String(pieceIndBytes, StandardCharsets.ISO_8859_1));
                     if (Arrays.equals(pieceSha1, pieceRealSha1)) {
-                        LOG.info("Hoooray!");
                         long begin = pieceMessage.getIndex() * metainfo.getPieceLength();
                         long end = begin + metainfo.getPieceLength();
                         long current = 0;
+                        long currentI = 0;
                         for (int i = 0; i < metainfo.getFiles().size(); i++) {
                             TorrentFileInfo torrentFile = metainfo.getFiles().get(i);
-                            if (current <= begin && current <= begin + torrentFile.getLengthInBytes()) {
-                                LOG.info("KEK");
-                                current += torrentFile.getLengthInBytes();
+                            if (current + torrentFile.getLengthInBytes() >= begin) {
                                 for (int j = i; j < metainfo.getFiles().size(); j++) {
-                                    TorrentFileInfo oTorrentFile = metainfo.getFiles().get(i);
-                                    if (end >= current + oTorrentFile.getLengthInBytes()) {
-                                        LOG.info("KEK2");
+                                    TorrentFileInfo oTorrentFile = metainfo.getFiles().get(j);
+                                    if (end < current + oTorrentFile.getLengthInBytes()) {
                                         long written = 0;
                                         for (int k = i; k <= j; k++) {
                                             TorrentFileInfo tf = metainfo.getFiles().get(k);
-                                            long start = k == i ? begin : 0;
-                                            long finish = k == j ? metainfo.getPieceLength() - written : tf.getLengthInBytes();
-                                            written += finish - start;
+                                            long start = k == i ? begin - currentI : 0;
+                                            long finish = k == j ? end - written : tf.getLengthInBytes();
                                             try {
                                                 File file = new File(tf.getPath());
                                                 Files.createParentDirs(file);
                                                 Files.touch(file);
-                                                LOG.info(file.getAbsolutePath());
                                                 FileOutputStream fos = new FileOutputStream(file);
                                                 FileChannel ch = fos.getChannel();
                                                 ch.position(start);
@@ -139,12 +134,17 @@ public class TorrentClient implements AutoCloseable {
                                             } catch (IOException e) {
                                                 e.printStackTrace();
                                             }
+                                            written += finish - start;
+                                            currentI += tf.getLengthInBytes();
                                         }
                                         break;
+                                    } else {
+                                        current += oTorrentFile.getLengthInBytes();
                                     }
                                 }
                                 break;
                             } else {
+                                currentI += torrentFile.getLengthInBytes();
                                 current += torrentFile.getLengthInBytes();
                             }
                         }
@@ -171,8 +171,10 @@ public class TorrentClient implements AutoCloseable {
                     return;
                 }
                 try (PeerConnection peerConnection = new PeerConnection(peer, metainfo, myPeerId)) {
+                    final boolean[] isBad = {false};
+                    isDownloading = false;
+                    havePieces.clear();
                     peerConnection.setPieceMessageConsumer(pieceMessage -> {
-                        LOG.info(Arrays.toString(pieceMessage.getBlock()));
                         try {
                             pieceMessageBlockingQueue.put(pieceMessage);
                         } catch (InterruptedException e) {
@@ -208,6 +210,12 @@ public class TorrentClient implements AutoCloseable {
                             }
                         }
                     });
+                    peerConnection.setExceptionConsumer(e -> {
+                        isBad[0] = true;
+                        synchronized (lock) {
+                            lock.notifyAll();
+                        }
+                    });
                     BitSet bitSet = new BitSet(pieceStatuses.length);
                     for (int i = 0; i < pieceStatuses.length; i++) {
                         if (pieceStatuses[i].get() >= metainfo.getPieceLength()) {
@@ -218,11 +226,12 @@ public class TorrentClient implements AutoCloseable {
                     peerConnection.sendInterested();
                     LOG.info("Sending interested");
                     while (true) {
-                        LOG.info("Waiting for response...");
                         synchronized (lock) {
                             lock.wait(10000);
                         }
-                        LOG.info("Here we go!");
+                        if (isBad[0]) {
+                            break;
+                        }
                         while (!havePieces.isEmpty()) {
                             int index = havePieces.first();
                             int x = pieceStatuses[index].get();
