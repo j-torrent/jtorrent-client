@@ -165,7 +165,7 @@ public class PeerConnection implements AutoCloseable {
                     int pieceIndex = byteBuffer.getInt();
                     int begin = byteBuffer.getInt();
                     int length = byteBuffer.getInt();
-                    requestMessageConsumer.accept(new RequestMessage(pieceIndex, begin, length));
+                    requestMessageConsumer.accept(RequestMessage.of(pieceIndex, begin, length));
                     break;
                 }
                 case 7: {
@@ -174,7 +174,7 @@ public class PeerConnection implements AutoCloseable {
                     int begin = byteBuffer.getInt();
                     byte[] block = new byte[byteBuffer.remaining()];
                     byteBuffer.get(block);
-                    pieceMessageConsumer.accept(new PieceMessage(pieceIndex, begin, block));
+                    pieceMessageConsumer.accept(PieceMessage.of(pieceIndex, begin, block));
                     break;
                 }
                 default:
