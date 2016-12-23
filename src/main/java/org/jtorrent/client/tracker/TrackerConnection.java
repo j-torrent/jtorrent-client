@@ -15,22 +15,22 @@ import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 
 public class TrackerConnection {
-    public static final String EVENT = "event";
-    public static final String UPLOADED = "uploaded";
-    public static final String DOWNLOADED = "downloaded";
-    public static final String LEFT = "left";
-    public static final String COMPACT = "compact";
-    public static final String NO_PEER_ID = "no_peer_id";
-    public static final String PORT = "port";
-    public static final String PEER_ID = "peer_id";
-    public static final String INFO_HASH = "info_hash";
+    private static final String EVENT = "event";
+    private static final String UPLOADED = "uploaded";
+    private static final String DOWNLOADED = "downloaded";
+    private static final String LEFT = "left";
+    private static final String COMPACT = "compact";
+    private static final String NO_PEER_ID = "no_peer_id";
+    private static final String PORT = "port";
+    private static final String PEER_ID = "peer_id";
+    private static final String INFO_HASH = "info_hash";
 
-    public static final String STARTED_EVENT = "started";
-    public static final String INITIAL_UPLOADED = "0";
-    public static final String INITIAL_DOWNLOADED = "0";
-    public static final String IS_COMPACT = "0";
-    public static final String IS_PEER_NOT_NEEDED = "0";
-    public static final String DEFAULT_PORT = "6881";
+    private final boolean isCompact;
+    private final boolean isPeerNotNeeded;
+    private final int port;
+    private final int downloaded;
+    private final int uploaded;
+    private final Event event;
 
     private final Metainfo metainfo;
     private final PeerId selfPeerId;
@@ -39,7 +39,15 @@ public class TrackerConnection {
     private final TrackerAnswerParser trackerAnswerParser = TrackerAnswerParser.getInstance();
     private final BencodeParser bencodeParser = BencodeParser.getInstance();
 
-    public TrackerConnection(Metainfo metainfo, PeerId selfPeerId) {
+    TrackerConnection(boolean isCompact, boolean isPeerNotNeeded, int port,
+                      int downloaded, int uploaded, Event event,
+                      Metainfo metainfo, PeerId selfPeerId) {
+        this.isCompact = isCompact;
+        this.isPeerNotNeeded = isPeerNotNeeded;
+        this.port = port;
+        this.downloaded = downloaded;
+        this.uploaded = uploaded;
+        this.event = event;
         this.metainfo = metainfo;
         this.selfPeerId = selfPeerId;
     }
@@ -51,13 +59,13 @@ public class TrackerConnection {
             builder.setCharset(StandardCharsets.ISO_8859_1);
             builder.addParameter(INFO_HASH, new String(metainfo.getInfoSHA1(), StandardCharsets.ISO_8859_1))
                     .addParameter(PEER_ID, selfPeerId.getId())
-                    .addParameter(PORT, DEFAULT_PORT)
-                    .addParameter(EVENT, STARTED_EVENT)
-                    .addParameter(UPLOADED, INITIAL_UPLOADED)
-                    .addParameter(DOWNLOADED, INITIAL_DOWNLOADED)
+                    .addParameter(PORT, String.valueOf(port))
+                    .addParameter(EVENT, event.name)
+                    .addParameter(UPLOADED, String.valueOf(uploaded))
+                    .addParameter(DOWNLOADED, String.valueOf(downloaded))
                     .addParameter(LEFT, String.valueOf(filesSize))
-                    .addParameter(COMPACT, IS_COMPACT)
-                    .addParameter(NO_PEER_ID, IS_PEER_NOT_NEEDED);
+                    .addParameter(COMPACT, isCompact ? "1" : "0")
+                    .addParameter(NO_PEER_ID, isPeerNotNeeded ? "1" : "0");
             HttpGet request = new HttpGet(builder.build());
             HttpResponse response = client.execute(request);
             if (response.getStatusLine().getStatusCode() == 200) {

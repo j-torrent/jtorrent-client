@@ -31,6 +31,7 @@ public class TorrentClient implements AutoCloseable {
 
     private final Metainfo metainfo;
     private final int connectionTimeout;
+    private final TrackerConnection trackerConnection;
 
     private final BlockingQueue<Peer> unmanagedPeers;
     private final BlockingQueue<PieceMessage> pieceMessageBlockingQueue;
@@ -41,15 +42,17 @@ public class TorrentClient implements AutoCloseable {
     private final List<Thread> peerThreads;
     private final Thread chunkAggregator;
 
-    public TorrentClient(Metainfo metainfo, int downloaders, int connectionTimeout) {
+    public TorrentClient(Metainfo metainfo, int downloaders, int connectionTimeout,
+                         TrackerConnection trackerConnection, PeerId myPeerId) {
         this.metainfo = metainfo;
         this.connectionTimeout = connectionTimeout;
+        this.trackerConnection = trackerConnection;
+        this.myPeerId = myPeerId;
 
         unmanagedPeers = new LinkedBlockingQueue<>();
         pieceMessageBlockingQueue = new LinkedBlockingDeque<>();
         pieceStatuses = new AtomicInteger[metainfo.getPieces().size()];
         Arrays.setAll(pieceStatuses, i -> new AtomicInteger(0));
-        myPeerId = PeerId.generateJTorrentRandom();
         trackerFetcher = new Thread(new TrackerFetcher());
         trackerFetcher.setName("tracker-fetcher");
         trackerFetcher.start();
@@ -258,7 +261,6 @@ public class TorrentClient implements AutoCloseable {
     }
 
     private class TrackerFetcher implements Runnable {
-        private TrackerConnection trackerConnection = new TrackerConnection(metainfo, myPeerId);
         private Set<Peer> peersSet = new HashSet<>();
 
         @Override
