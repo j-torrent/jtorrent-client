@@ -14,5 +14,14 @@ public class PeerMessage {
     public PeerMessage(Type type, ByteBuffer data) {
         this.type = type;
         this.data = data;
+        data.rewind();
+    }
+
+    public ByteBuffer getData() {
+        return data;
+    }
+
+    public Type getType() {
+        return type;
     }
 }

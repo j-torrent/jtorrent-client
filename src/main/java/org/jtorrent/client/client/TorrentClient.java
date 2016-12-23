@@ -5,7 +5,10 @@ import org.jtorrent.client.metainfo.Metainfo;
 import org.jtorrent.client.metainfo.PeerId;
 import org.jtorrent.client.metainfo.TorrentFileInfo;
 import org.jtorrent.client.p2p.PeerConnection;
+import org.jtorrent.client.p2p.messages.BitfieldMessage;
+import org.jtorrent.client.p2p.messages.InterestedMessage;
 import org.jtorrent.client.p2p.messages.PieceMessage;
+import org.jtorrent.client.p2p.messages.RequestMessage;
 import org.jtorrent.client.tracker.Peer;
 import org.jtorrent.client.tracker.TrackerAnswer;
 import org.jtorrent.client.tracker.TrackerConnection;
@@ -213,14 +216,7 @@ public class TorrentClient implements AutoCloseable {
                         isBad[0] = true;
                         latch.countDown();
                     });
-                    BitSet bitSet = new BitSet(pieceStatuses.length);
-                    for (int i = 0; i < pieceStatuses.length; i++) {
-                        if (pieceStatuses[i].get() >= metainfo.getPieceLength()) {
-                            bitSet.set(i);
-                        }
-                    }
-                    peerConnection.sendBitfield(bitSet);
-                    peerConnection.sendInterested();
+                    peerConnection.send(new InterestedMessage());
                     LOG.info("Sending interested");
                     while (true) {
                         latch.await();
@@ -238,7 +234,7 @@ public class TorrentClient implements AutoCloseable {
                             }
                             if (pieceStatuses[index].compareAndSet(x, x + size)) {
                                 isDownloading = true;
-                                peerConnection.sendRequest(index, x, size);
+                                peerConnection.send(RequestMessage.of(index, x, size));
                                 break;
                             }
                         }

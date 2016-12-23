@@ -234,75 +234,14 @@ public class PeerConnection implements AutoCloseable {
         this.exceptionConsumer = exceptionConsumer;
     }
 
-    private void send(byte messageId, ByteBuffer payloadBuffer) throws IOException {
-        byte[] payload = new byte[payloadBuffer.remaining()];
-        payloadBuffer.get(payload);
-        ByteBuffer byteBuffer = ByteBuffer.allocate(4 + 1 + payload.length);
-        byteBuffer.order(ByteOrder.BIG_ENDIAN);
-        byteBuffer.putInt(1 + payload.length);
-        byteBuffer.put(messageId);
-        byteBuffer.put(payload);
-        outgoingMessages.offer(ByteBuffer.wrap(byteBuffer.array()));
-    }
-
-    public void sendChoke() throws IOException {
-        choked = false;
-        send((byte) 0, ByteBuffer.allocate(0));
-    }
-
-    public void sendUnchoke() throws IOException {
-        choked = true;
-        send((byte) 1, ByteBuffer.allocate(0));
-    }
-
-    public void sendInterested() throws IOException {
-        interested = true;
-        send((byte) 2, ByteBuffer.allocate(0));
-    }
-
-    public void sendNotInterested() throws IOException {
-        interested = false;
-        send((byte) 3, ByteBuffer.allocate(0));
-    }
-
-    public void sendHave(int pieceIndex) throws IOException {
-        send((byte) 4, buildByteBuffer(pieceIndex));
-    }
-
-    public void sendBitfield(BitSet bitSet) throws IOException {
-        ByteBuffer byteBuffer = ByteBuffer.allocate(bitSet.size() / 8);
-        byteBuffer.put(bitSet.toByteArray());
-//        send((byte) 5, byteBuffer);
-    }
-
-    public void sendRequest(int index, int begin, int length) throws IOException {
-        send((byte) 6, buildByteBuffer(index, begin, length));
-    }
-
-    public void sendPiece(int index, int begin, byte[] block) {
-        // TODO: implement
-        throw new UnsupportedOperationException();
-//        send((byte) 7, buildByteBuffer(index, begin, block));
-    }
-
-    public void sendCancel(int index, int begin, int length) throws IOException {
-        send((byte) 8, buildByteBuffer(index, begin, length));
-    }
-
-    public void sendPort(int port) throws IOException {
-        ByteBuffer byteBuffer = ByteBuffer.allocate(2);
-        byteBuffer.putShort((short) port);
-        send((byte) 9, buildByteBuffer(port));
-    }
-
-    private static ByteBuffer buildByteBuffer(Integer... ints) {
-        ByteBuffer byteBuffer = ByteBuffer.allocate(4 * ints.length);
-        byteBuffer.order(ByteOrder.BIG_ENDIAN);
-        for (Integer i : ints) {
-            byteBuffer.putInt(i);
+    public void send(PeerMessage peerMessage) {
+        try {
+            outgoingMessages.put(peerMessage.getData());
+        } catch (InterruptedException ignored) {
+            // Ignore, our send queue will only block if it contains
+            // MAX_INTEGER messages, in which case we're already in big
+            // trouble, and we'd have to be interrupted, too.
         }
-        byteBuffer.flip();
-        return byteBuffer;
     }
 
     public void setHeaderConsumer(Consumer<ByteBuffer> headerConsumer) {
