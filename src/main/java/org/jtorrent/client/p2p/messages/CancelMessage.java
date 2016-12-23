@@ -31,7 +31,14 @@ public class CancelMessage extends PeerMessage {
         return this.length;
     }
 
-    public static CancelMessage craft(int index, int begin, int length) {
+    public static CancelMessage parse(ByteBuffer buffer) {
+        int index = buffer.getInt();
+        int begin = buffer.getInt();
+        int length = buffer.getInt();
+        return new CancelMessage(buffer, index, begin, length);
+    }
+
+    public static CancelMessage of(int index, int begin, int length) {
         ByteBuffer buffer = ByteBuffer.allocateDirect(
                 PeerMessage.MESSAGE_LENGTH_SIZE + BASE_SIZE);
         buffer.putInt(CancelMessage.BASE_SIZE);

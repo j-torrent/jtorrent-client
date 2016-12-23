@@ -14,7 +14,7 @@ public class HaveMessage extends PeerMessage {
         this.piece = piece;
     }
 
-    public int getPiece() {
+    public int getIndex() {
         return piece;
     }
 

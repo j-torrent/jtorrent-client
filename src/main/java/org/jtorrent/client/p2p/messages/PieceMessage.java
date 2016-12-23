@@ -28,6 +28,14 @@ public class PieceMessage extends PeerMessage {
         return block;
     }
 
+    public static PieceMessage parse(ByteBuffer buffer) {
+        int index = buffer.getInt();
+        int begin = buffer.getInt();
+        byte[] bytes = new byte[buffer.remaining()];
+        buffer.slice().get(bytes);
+        return new PieceMessage(buffer, index, begin, bytes);
+    }
+
     public static PieceMessage of(int index, int begin, byte[] block) {
         ByteBuffer buffer = ByteBuffer.allocateDirect(
                 PeerMessage.MESSAGE_LENGTH_SIZE + BASE_SIZE + block.length);

@@ -28,6 +28,13 @@ public class RequestMessage extends PeerMessage {
         return index;
     }
 
+    public static RequestMessage parse(ByteBuffer buffer) {
+        int index = buffer.getInt();
+        int begin = buffer.getInt();
+        int length = buffer.getInt();
+        return new RequestMessage(buffer, index, begin, length);
+    }
+
     public static RequestMessage of(int index, int begin, int length) {
         ByteBuffer buffer = ByteBuffer.allocateDirect(
                 PeerMessage.MESSAGE_LENGTH_SIZE + BASE_SIZE);

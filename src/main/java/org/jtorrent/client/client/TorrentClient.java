@@ -192,13 +192,14 @@ public class TorrentClient implements AutoCloseable {
                         isDownloading = false;
                         latch.countDown();
                     });
-                    peerConnection.setBitfieldConsumer(bitSet -> {
+                    peerConnection.setBitfieldConsumer(bitfieldMessage -> {
+                        BitSet bitSet = bitfieldMessage.getBitSet();
                         for (int i = bitSet.nextSetBit(0); i != -1; i = bitSet.nextSetBit(i + 1)) {
                             havePieces.add(i);
                         }
                     });
-                    peerConnection.setHaveConsumer(index -> {
-                        havePieces.add(index);
+                    peerConnection.setHaveConsumer(haveMessage -> {
+                        havePieces.add(haveMessage.getIndex());
                         if (!isDownloading) {
                             latch.countDown();
                         }

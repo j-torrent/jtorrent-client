@@ -16,6 +16,17 @@ public class BitfieldMessage extends PeerMessage {
         this.bitSet = bitSet;
     }
 
+    public static BitfieldMessage parse(ByteBuffer buffer) {
+        BitSet bitfield = new BitSet(buffer.remaining() * 8);
+        for (int i = 0; i < buffer.remaining() * 8; i++) {
+            if ((buffer.get(i / 8) & (1 << (7 - (i % 8)))) > 0) {
+                bitfield.set(i);
+            }
+        }
+
+        return new BitfieldMessage(buffer, bitfield);
+    }
+
     public static BitfieldMessage of(BitSet bitSet) {
         byte[] bitfieldBuffer = new byte[(bitSet.size() + 8 - 1) / 8];
         for (int i = bitSet.nextSetBit(0); i >= 0; i = bitSet.nextSetBit(i + 1)) {
@@ -28,5 +39,9 @@ public class BitfieldMessage extends PeerMessage {
         buffer.put(Type.BITFIELD.getTypeByte());
         buffer.put(ByteBuffer.wrap(bitfieldBuffer));
         return new BitfieldMessage(buffer, bitSet);
+    }
+
+    public BitSet getBitSet() {
+        return bitSet;
     }
 }

@@ -2,8 +2,7 @@ package org.jtorrent.client.p2p;
 
 import org.jtorrent.client.metainfo.Metainfo;
 import org.jtorrent.client.metainfo.PeerId;
-import org.jtorrent.client.p2p.messages.PieceMessage;
-import org.jtorrent.client.p2p.messages.RequestMessage;
+import org.jtorrent.client.p2p.messages.*;
 import org.jtorrent.client.tracker.Peer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,6 +25,7 @@ public class PeerConnection implements AutoCloseable {
     private static final int INFO_HASH_SIZE = 20;
     private static final int PEER_ID_SIZE = 20;
     private static final String BIT_TORRENT_PROTOCOL = "BitTorrent protocol";
+    public static final int MAX_MESSAGE_LENGTH = 1 << 16;
 
     private final Thread incomingThread;
     private final Thread outgoingThread;
@@ -39,15 +39,19 @@ public class PeerConnection implements AutoCloseable {
     private volatile boolean peerInterested = false;
     private Consumer<ByteBuffer> headerConsumer = byteBuffer -> {
     };
-    private Consumer<Void> unchokeConsumer = v -> {
+    private Consumer<KeepAliveMessage> keepAliveMessageConsumer = keepAliveMessage -> {
     };
-    private Consumer<Integer> haveConsumer = index -> {
+    private Consumer<UnchokeMessage> unchokeConsumer = v -> {
     };
-    private Consumer<BitSet> bitfieldConsumer = bitSet -> {
+    private Consumer<HaveMessage> haveConsumer = index -> {
+    };
+    private Consumer<BitfieldMessage> bitfieldConsumer = bitSet -> {
     };
     private Consumer<RequestMessage> requestMessageConsumer = requestMessage -> {
     };
     private Consumer<PieceMessage> pieceMessageConsumer = pieceMessage -> {
+    };
+    private Consumer<CancelMessage> cancelConsumer = cancelMessage -> {
     };
     private Consumer<IOException> exceptionConsumer = e -> {
     };
@@ -127,58 +131,30 @@ public class PeerConnection implements AutoCloseable {
             this.metainfo = metainfo;
         }
 
-        private void processMessage(byte[] message) {
-            switch (message[0]) {
-                case 0:
-                    peerChoked = true;
-                    break;
-                case 1:
-                    peerChoked = false;
-                    unchokeConsumer.accept(null);
-                    break;
-                case 2:
-                    peerInterested = true;
-                    break;
-                case 3:
-                    peerInterested = false;
-                    break;
-                case 4: {
-                    ByteBuffer byteBuffer = ByteBuffer.wrap(Arrays.copyOfRange(message, 1, message.length));
-                    int pieceIndex = byteBuffer.getInt();
-                    haveConsumer.accept(pieceIndex);
-                    break;
-                }
-                case 5: {
-                    BitSet bitSet = new BitSet(metainfo.getPieces().size());
-                    for (int i = 1; i < message.length; i++) {
-                        for (int j = 0; j < 8; j++) {
-                            if (((message[i] >> j) & 1) == 1) {
-                                bitSet.set((i - 1) * 8 + (7 - j));
-                            }
-                        }
-                    }
-                    bitfieldConsumer.accept(bitSet);
-                    break;
-                }
-                case 6: {
-                    ByteBuffer byteBuffer = ByteBuffer.wrap(Arrays.copyOfRange(message, 1, message.length));
-                    int pieceIndex = byteBuffer.getInt();
-                    int begin = byteBuffer.getInt();
-                    int length = byteBuffer.getInt();
-                    requestMessageConsumer.accept(RequestMessage.of(pieceIndex, begin, length));
-                    break;
-                }
-                case 7: {
-                    ByteBuffer byteBuffer = ByteBuffer.wrap(Arrays.copyOfRange(message, 1, message.length));
-                    int pieceIndex = byteBuffer.getInt();
-                    int begin = byteBuffer.getInt();
-                    byte[] block = new byte[byteBuffer.remaining()];
-                    byteBuffer.get(block);
-                    pieceMessageConsumer.accept(PieceMessage.of(pieceIndex, begin, block));
-                    break;
-                }
-                default:
-                    LOG.warn("Unknown message id: " + message[0]);
+        private void processMessage(PeerMessage message) {
+            if (message instanceof KeepAliveMessage) {
+                keepAliveMessageConsumer.accept((KeepAliveMessage) message);
+            } else if (message instanceof ChokeMessage) {
+                peerChoked = true;
+            } else if (message instanceof UnchokeMessage) {
+                peerChoked = false;
+                unchokeConsumer.accept((UnchokeMessage) message);
+            } else if (message instanceof InterestedMessage) {
+                peerInterested = true;
+            } else if (message instanceof NotInterestedMessage) {
+                peerInterested = false;
+            } else if (message instanceof HaveMessage) {
+                haveConsumer.accept((HaveMessage) message);
+            } else if (message instanceof BitfieldMessage) {
+                bitfieldConsumer.accept((BitfieldMessage) message);
+            } else if (message instanceof RequestMessage) {
+                requestMessageConsumer.accept((RequestMessage) message);
+            } else if (message instanceof PieceMessage) {
+                pieceMessageConsumer.accept((PieceMessage) message);
+            } else if (message instanceof CancelMessage) {
+                cancelConsumer.accept((CancelMessage) message);
+            } else {
+                throw new IllegalStateException("Java can't into ADT: there should be no other messages");
             }
         }
 
@@ -219,10 +195,13 @@ public class PeerConnection implements AutoCloseable {
                 // Continually read messages
                 while (!Thread.interrupted()) {
                     int size = readLength();
-                    if (size == 0) {
-                        continue; // Just keep-alive message
+                    ByteBuffer buffer = ByteBuffer.allocate(4 + size);
+                    buffer.putInt(size);
+                    if (size != 0) {
+                        buffer.put(readPayload(size));
                     }
-                    byte[] message = readPayload(size);
+                    buffer.rewind();
+                    PeerMessage message = MessageParser.getInstance().parse(buffer);
                     processMessage(message);
                 }
             } catch (IOException e) {
@@ -231,11 +210,11 @@ public class PeerConnection implements AutoCloseable {
         }
     }
 
-    public void setHaveConsumer(Consumer<Integer> haveConsumer) {
+    public void setHaveConsumer(Consumer<HaveMessage> haveConsumer) {
         this.haveConsumer = haveConsumer;
     }
 
-    public void setBitfieldConsumer(Consumer<BitSet> bitfieldConsumer) {
+    public void setBitfieldConsumer(Consumer<BitfieldMessage> bitfieldConsumer) {
         this.bitfieldConsumer = bitfieldConsumer;
     }
 
@@ -247,7 +226,7 @@ public class PeerConnection implements AutoCloseable {
         this.pieceMessageConsumer = pieceMessageConsumer;
     }
 
-    public void setUnchokeConsumer(Consumer<Void> unchokeConsumer) {
+    public void setUnchokeConsumer(Consumer<UnchokeMessage> unchokeConsumer) {
         this.unchokeConsumer = unchokeConsumer;
     }
 
