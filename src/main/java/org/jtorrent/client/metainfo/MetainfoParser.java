@@ -4,6 +4,7 @@ import org.jtorrent.client.bencode.*;
 import org.jtorrent.client.util.Utils;
 
 import java.io.File;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -37,7 +38,10 @@ public class MetainfoParser {
         BDictionary infoDict = BDictionary.castOrFailure(metainfoDict.getOrFailure(INFO));
         byte[] infoSHA1 = infoDict.calculateSHA1();
         long pieceLength = BLong.castOrFailure(infoDict.getOrFailure(PIECE_LENGTH)).getValue();
-        List<String> pieces = Utils.splitBy(BString.castOrFailure(infoDict.getOrFailure(PIECES)).getValue(), 20);
+        List<byte[]> pieces = Utils.splitBy(
+                BString.castOrFailure(infoDict.getOrFailure(PIECES)).getValue().getBytes(StandardCharsets.ISO_8859_1),
+                20
+        );
         List<TorrentFileInfo> fileInfos;
         String name = BString.castOrFailure(infoDict.getOrFailure(NAME)).getValue();
         if (infoDict.getValue().containsKey(LENGTH)) {

@@ -35,13 +35,15 @@ public class TrackerConnection {
     private final Metainfo metainfo;
     private final PeerId selfPeerId;
 
+    private final int trackerPort;
+
     private final HttpClient client = HttpClientBuilder.create().build();
     private final TrackerAnswerParser trackerAnswerParser = TrackerAnswerParser.getInstance();
     private final BencodeParser bencodeParser = BencodeParser.getInstance();
 
     TrackerConnection(boolean isCompact, boolean isPeerNotNeeded, int port,
                       int downloaded, int uploaded, Event event,
-                      Metainfo metainfo, PeerId selfPeerId) {
+                      Metainfo metainfo, PeerId selfPeerId, int trackerPort) {
         this.isCompact = isCompact;
         this.isPeerNotNeeded = isPeerNotNeeded;
         this.port = port;
@@ -50,12 +52,14 @@ public class TrackerConnection {
         this.event = event;
         this.metainfo = metainfo;
         this.selfPeerId = selfPeerId;
+        this.trackerPort = trackerPort;
     }
 
     public TrackerAnswer makeInitialRequest() throws IOException {
         try {
             long filesSize = metainfo.getFiles().stream().map(TorrentFileInfo::getLengthInBytes).mapToLong(i -> i).sum();
             URIBuilder builder = new URIBuilder(metainfo.getAnnounce());
+            builder.setPort(8080);
             builder.setCharset(StandardCharsets.ISO_8859_1);
             builder.addParameter(INFO_HASH, new String(metainfo.getInfoSHA1(), StandardCharsets.ISO_8859_1))
                     .addParameter(PEER_ID, selfPeerId.getId())

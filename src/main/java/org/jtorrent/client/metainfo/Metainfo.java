@@ -11,10 +11,10 @@ public class Metainfo {
     private final String announce;
     private final byte[] infoSHA1;
     private final long pieceLength;
-    private final List<String> pieces;
+    private final List<byte[]> pieces;
     private final List<TorrentFileInfo> files;
 
-    public Metainfo(String announce, byte[] infoSHA1, long pieceLength, List<String> pieces, List<TorrentFileInfo> files) {
+    public Metainfo(String announce, byte[] infoSHA1, long pieceLength, List<byte[]> pieces, List<TorrentFileInfo> files) {
         this.announce = announce;
         this.infoSHA1 = infoSHA1;
         this.pieceLength = pieceLength;
@@ -30,7 +30,7 @@ public class Metainfo {
         return pieceLength;
     }
 
-    public List<String> getPieces() {
+    public List<byte[]> getPieces() {
         return pieces;
     }
 

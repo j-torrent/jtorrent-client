@@ -15,6 +15,7 @@ public class TrackerConnectionBuilder {
     private int downloaded = 0;
     private int uploaded = 0;
     private Event event = Event.STARTED;
+    private int trackerPort = 80;
 
     private Metainfo metainfo;
     private PeerId myPeerId;
@@ -59,6 +60,11 @@ public class TrackerConnectionBuilder {
         return this;
     }
 
+    public TrackerConnectionBuilder setTrackerPort(int trackerPort) {
+        this.trackerPort = trackerPort;
+        return this;
+    }
+
     public TrackerConnection build() {
         if (metainfo == null) {
             throw new IllegalArgumentException("Metainfo should be set");
@@ -67,6 +73,6 @@ public class TrackerConnectionBuilder {
             throw new IllegalArgumentException("Peer id should be set");
         }
         return new TrackerConnection(isCompact, isPeerNotNeeded, port,
-                downloaded, uploaded, event, metainfo, myPeerId);
+                downloaded, uploaded, event, metainfo, myPeerId, trackerPort);
     }
 }

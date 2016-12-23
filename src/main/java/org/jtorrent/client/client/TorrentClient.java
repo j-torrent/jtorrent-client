@@ -116,7 +116,7 @@ public class TorrentClient implements AutoCloseable {
                 });
                 if (allLength == pieceLength) {
                     pieceBytesWritten.remove(pieceIndex);
-                    byte[] pieceSha1 = metainfo.getPieces().get(pieceIndex).getBytes(StandardCharsets.ISO_8859_1);
+                    byte[] pieceSha1 = metainfo.getPieces().get(pieceIndex);
                     byte[] pieceIndBytes = pieceBytes.remove(pieceIndex);
                     byte[] pieceRealSha1 = SHA1Digester.getInstance().digest(pieceIndBytes);
                     if (Arrays.equals(pieceSha1, pieceRealSha1)) {
