@@ -41,4 +41,14 @@ public class Metainfo {
     public byte[] getInfoSHA1() {
         return infoSHA1;
     }
+
+    public int getPieceLength(int index) {
+        if (index == pieces.size() - 1) {
+            long allOtherPieces = getPieceLength() * (getPieces().size() - 1);
+            long allFiles = getFiles().stream().mapToLong(TorrentFileInfo::getLengthInBytes).sum();
+            return (int) (allFiles - allOtherPieces);
+        } else {
+            return (int) pieceLength;
+        }
+    }
 }

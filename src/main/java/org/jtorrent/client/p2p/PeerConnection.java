@@ -62,7 +62,7 @@ public class PeerConnection implements AutoCloseable {
         }
         LOG.info("Connecting to " + peer.getAddress());
         peerSocketChannel = SocketChannel.open();
-        peerSocketChannel.socket().connect(peer.getAddress(), 1000);
+        peerSocketChannel.socket().connect(peer.getAddress(), 5000);
 
         incomingThread = new Thread(() -> {
             LOG.info("Incoming thread start!");
@@ -119,9 +119,19 @@ public class PeerConnection implements AutoCloseable {
                             break;
                         }
                         case 5: {
-                            ByteBuffer byteBuffer = ByteBuffer.wrap(Arrays.copyOfRange(message, 1, message.length));
-                            bitfieldConsumer.accept(BitSet.valueOf(byteBuffer));
-                            LOG.info("" + byteBuffer.capacity());
+                            BitSet bitSet = new BitSet(metainfo.getPieces().size());
+                            for (int i = 1; i < message.length; i++) {
+                                for (int j = 0; j < 8; j++) {
+                                    if (((message[i] >> j) & 1) == 1) {
+                                        bitSet.set((i - 1) * 8 + (7 - j));
+                                    }
+                                }
+                            }
+//                            ByteBuffer byteBuffer = ByteBuffer.wrap(Arrays.copyOfRange(message, 1, message.length));
+//                            byteBuffer.order(ByteOrder.LITTLE_ENDIAN);
+//                            BitSet bitSet = BitSet.valueOf(byteBuffer);
+                            bitfieldConsumer.accept(bitSet);
+//                            LOG.info("" + byteBuffer.capacity());
                             break;
                         }
                         case 6: {
@@ -238,7 +248,6 @@ public class PeerConnection implements AutoCloseable {
     public void sendBitfield(BitSet bitSet) throws IOException {
         ByteBuffer byteBuffer = ByteBuffer.allocate(bitSet.size() / 8);
         byteBuffer.put(bitSet.toByteArray());
-        LOG.info("KUDAH " + byteBuffer.capacity());
 //        send((byte) 5, byteBuffer);
     }
 

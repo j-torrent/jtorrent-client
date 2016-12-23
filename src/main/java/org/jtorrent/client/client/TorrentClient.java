@@ -13,19 +13,14 @@ import org.jtorrent.client.util.SHA1Digester;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.IOException;
+import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ConcurrentSkipListSet;
-import java.util.concurrent.LinkedBlockingDeque;
-import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class TorrentClient implements AutoCloseable {
     private static final Logger LOG = LoggerFactory.getLogger(TorrentClient.class);
@@ -54,7 +49,7 @@ public class TorrentClient implements AutoCloseable {
         chunkAggregator.start();
 
         peerThreads = new ArrayList<>();
-        for (int i = 0; i < 10; i++) {
+        for (int i = 0; i < 5; i++) {
             Thread peerThread = new Thread(new PeerWorker());
             peerThread.setName("peer-thread-" + i);
             peerThreads.add(peerThread);
@@ -65,7 +60,13 @@ public class TorrentClient implements AutoCloseable {
     @Override
     public void close() throws InterruptedException {
         LOG.info("Closing");
+        trackerFetcher.interrupt();
+        chunkAggregator.interrupt();
+        for (Thread thread : peerThreads) {
+            thread.interrupt();
+        }
         trackerFetcher.join();
+        chunkAggregator.join();
         for (Thread thread : peerThreads) {
             thread.join();
         }
@@ -88,23 +89,23 @@ public class TorrentClient implements AutoCloseable {
                 int allLength = pieceBytesWritten.compute(pieceMessage.getIndex(), (k, v) -> (v == null ? 0 : v) + pieceMessage.getBlock().length);
                 pieceBytes.compute(pieceMessage.getIndex(), (k, v) -> {
                     if (v == null) {
-                        v = new byte[(int) metainfo.getPieceLength()];
+                        v = new byte[metainfo.getPieceLength(pieceMessage.getIndex())];
                     }
                     System.arraycopy(pieceMessage.getBlock(), 0, v, pieceMessage.getBegin(), pieceMessage.getBlock().length);
                     return v;
                 });
-                if (allLength == metainfo.getPieceLength()) {
+                if (allLength == metainfo.getPieceLength(pieceMessage.getIndex())) {
                     pieceBytesWritten.remove(pieceMessage.getIndex());
-                    piecesDownloaded++;
-                    LOG.info("Piece " + pieceMessage.getIndex() + " is downloaded");
-                    LOG.info("Already " + piecesDownloaded + "/" + metainfo.getPieces().size() + " are done");
-                    LOG.info("I can download " + set.size());
                     byte[] pieceSha1 = metainfo.getPieces().get(pieceMessage.getIndex()).getBytes(StandardCharsets.ISO_8859_1);
                     byte[] pieceIndBytes = pieceBytes.remove(pieceMessage.getIndex());
                     byte[] pieceRealSha1 = SHA1Digester.getInstance().digest(new String(pieceIndBytes, StandardCharsets.ISO_8859_1));
                     if (Arrays.equals(pieceSha1, pieceRealSha1)) {
+                        piecesDownloaded++;
+                        LOG.info("Piece " + pieceMessage.getIndex() + " is downloaded");
+                        LOG.info("Already " + piecesDownloaded + "/" + metainfo.getPieces().size() + " are done");
+                        LOG.info("I can download " + set.size());
                         long begin = pieceMessage.getIndex() * metainfo.getPieceLength();
-                        long end = begin + metainfo.getPieceLength();
+                        long end = begin + metainfo.getPieceLength(pieceMessage.getIndex());
                         long current = 0;
                         long currentI = 0;
                         for (int i = 0; i < metainfo.getFiles().size(); i++) {
@@ -118,21 +119,20 @@ public class TorrentClient implements AutoCloseable {
                                             TorrentFileInfo tf = metainfo.getFiles().get(k);
                                             long start = k == i ? begin - currentI : 0;
                                             long finish = k == j ? end - written : tf.getLengthInBytes();
+                                            File file = new File(tf.getPath());
                                             try {
-                                                File file = new File(tf.getPath());
                                                 Files.createParentDirs(file);
-                                                Files.touch(file);
-                                                FileOutputStream fos = new FileOutputStream(file);
-                                                FileChannel ch = fos.getChannel();
-                                                ch.position(start);
-                                                ByteBuffer byteBuffer = ByteBuffer.wrap(Arrays.copyOfRange(pieceIndBytes, (int) written, (int)(written + finish - start)));
-                                                while (byteBuffer.hasRemaining()) {
-                                                    ch.write(byteBuffer);
-                                                }
-                                                ch.close();
-                                                fos.close();
                                             } catch (IOException e) {
-                                                e.printStackTrace();
+                                                LOG.error("2", e);
+                                            }
+                                            try {
+                                                RandomAccessFile raf = new RandomAccessFile(file.getName(), "rw");
+                                                raf.setLength(tf.getLengthInBytes());
+                                                byte[] toWrite = Arrays.copyOfRange(pieceIndBytes, (int) written, (int)(written + finish - start));
+                                                raf.seek(begin);
+                                                raf.write(toWrite);
+                                            } catch (IOException e) {
+                                                LOG.error("1", e);
                                             }
                                             written += finish - start;
                                             currentI += tf.getLengthInBytes();
@@ -149,6 +149,7 @@ public class TorrentClient implements AutoCloseable {
                             }
                         }
                     } else {
+                        pieceStatuses[pieceMessage.getIndex()].set(0);
                         LOG.info("Mda sha1 ne sovpal");
                     }
                 }
@@ -157,8 +158,8 @@ public class TorrentClient implements AutoCloseable {
     }
 
     private class PeerWorker implements Runnable {
-        private ConcurrentSkipListSet<Integer> havePieces = new ConcurrentSkipListSet<>();
-        private final Object lock = new Object();
+        private final ConcurrentSkipListSet<Integer> havePieces = new ConcurrentSkipListSet<>();
+        private volatile CountDownLatch latch = new CountDownLatch(1);
         private volatile boolean isDownloading = false;
 
         @Override
@@ -174,6 +175,7 @@ public class TorrentClient implements AutoCloseable {
                     final boolean[] isBad = {false};
                     isDownloading = false;
                     havePieces.clear();
+                    latch = new CountDownLatch(1);
                     peerConnection.setPieceMessageConsumer(pieceMessage -> {
                         try {
                             pieceMessageBlockingQueue.put(pieceMessage);
@@ -181,40 +183,29 @@ public class TorrentClient implements AutoCloseable {
                             e.printStackTrace();
                         }
                         isDownloading = false;
-                        synchronized (lock) {
-                            lock.notifyAll();
-                        }
+                        latch.countDown();
                     });
                     peerConnection.setBitfieldConsumer(bitSet -> {
-                        LOG.info("I have bitset");
                         for (int i = bitSet.nextSetBit(0); i != -1 && i < metainfo.getPieces().size(); i = bitSet.nextSetBit(i + 1)) {
                             havePieces.add(i);
                             set.add(i);
                         }
                     });
                     peerConnection.setHaveConsumer(index -> {
-                        LOG.info("I HAVE " + index);
                         havePieces.add(index);
                         set.add(index);
-                        synchronized (lock) {
-                            if (!isDownloading) {
-                                lock.notifyAll();
-                            }
+                        if (!isDownloading) {
+                            latch.countDown();
                         }
                     });
                     peerConnection.setUnchokeConsumer(v -> {
-                        LOG.info("I'm unchoked");
-                        synchronized (lock) {
-                            if (!isDownloading) {
-                                lock.notifyAll();
-                            }
+                        if (!isDownloading) {
+                            latch.countDown();
                         }
                     });
                     peerConnection.setExceptionConsumer(e -> {
                         isBad[0] = true;
-                        synchronized (lock) {
-                            lock.notifyAll();
-                        }
+                        latch.countDown();
                     });
                     BitSet bitSet = new BitSet(pieceStatuses.length);
                     for (int i = 0; i < pieceStatuses.length; i++) {
@@ -226,22 +217,34 @@ public class TorrentClient implements AutoCloseable {
                     peerConnection.sendInterested();
                     LOG.info("Sending interested");
                     while (true) {
-                        synchronized (lock) {
-                            lock.wait(10000);
-                        }
+                        latch.await();
+                        latch = new CountDownLatch(1);
                         if (isBad[0]) {
                             break;
                         }
                         while (!havePieces.isEmpty()) {
                             int index = havePieces.first();
                             int x = pieceStatuses[index].get();
-                            if (x >= metainfo.getPieceLength()) {
-                                havePieces.remove(index);
-                                continue;
+                            int size;
+                            if (index == metainfo.getPieces().size() - 1) {
+                                long allOtherPieces = metainfo.getPieceLength() * (metainfo.getPieces().size() - 1);
+                                long allFiles = metainfo.getFiles().stream().mapToLong(TorrentFileInfo::getLengthInBytes).sum();
+                                int lastSize = (int) (allFiles - allOtherPieces);
+                                size = Math.min(CHUNK_SIZE, lastSize - x);
+                                if (x >= lastSize) {
+                                    havePieces.remove(index);
+                                    continue;
+                                }
+                            } else {
+                                size = Math.min(CHUNK_SIZE, (int) metainfo.getPieceLength() - x);
+                                if (x >= metainfo.getPieceLength()) {
+                                    havePieces.remove(index);
+                                    continue;
+                                }
                             }
-                            if (pieceStatuses[index].compareAndSet(x, x + CHUNK_SIZE)) {
+                            if (pieceStatuses[index].compareAndSet(x, x + size)) {
                                 isDownloading = true;
-                                peerConnection.sendRequest(index, x, Math.min(CHUNK_SIZE, (int) metainfo.getPieceLength() - x));
+                                peerConnection.sendRequest(index, x, size);
                                 break;
                             }
                         }
